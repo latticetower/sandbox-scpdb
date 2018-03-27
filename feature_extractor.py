@@ -3,23 +3,6 @@ from htmd.molecule.voxeldescriptors import getVoxelDescriptors
 from scipy.spatial.distance import euclidean
 
 
-def get_all_windows_data(features, centers, ndims=(16, 16, 16)):
-    """helper iterator method: gets features and centers for specific protein, slices it to windows defined by ndims, 
-    and after that computes geometric center for each window and returns its coordinates along with features
-    """
-    if isinstance(ndims, tuple):
-        (nx, ny, nz) = ndims
-    else:
-        nx = ny = nz = ndims
-    (maxx, maxy, maxz) = features.shape[:3]
-    for i in range(maxx - nx):
-        for j in range(maxy - ny):
-            for k in range(maxz - nz):
-                voxel_center = np.mean(
-                    centers[i:i+nx, j:j+ny, k:k+nz, :].reshape((nx*ny*nz, -1)), axis=0)
-                yield features[i:i+nx, j:j+ny, k:k+nz, :], voxel_center
-
-
 def get_windows_data(data, ndims=(16, 16, 16)):
     """helper iterator method: gets data, slices it to windows defined by ndims, returns its coordinates 
     """
@@ -33,27 +16,6 @@ def get_windows_data(data, ndims=(16, 16, 16)):
         for j in range(maxy - ny):
             for k in range(maxz - nz):
                 yield i, j, k, data[i:i+nx, j:j+ny, k:k+nz, :]
-
-                
-def process_folder(protein_path, ndims=16, cutoff=4):
-    """supposes that each folder contains `protein.mol2` and `site.mol2`, otherwise we skip it
-    at this step we save computed data to the same folder.
-    """
-    binding_site = Molecule(os.path.join(protein_path, "site.mol2")) 
-    binding_site_center = np.mean(binding_site.get('coords'), axis=0)
-    
-    protein_molecule = Molecule(os.path.join(protein_path, "protein.mol2"))
-    features, centers, N = getVoxelDescriptors(protein_molecule, buffer=8)
-    if np.any(N < ndims):
-        print("protein is smaller, skip")
-        return
-    N = tuple(N) + (-1,)
-    features = features.reshape(*N)
-    centers = centers.reshape(*N)
-    for features, center in get_all_windows_data(features, centers, ndims=ndims):
-        #print(center)
-        positive_condition = euclidean(center, binding_site_center) < cutoff
-        yield features, positive_condition
 
         
 def process_folder_balanced(protein_path, ndims=16, cutoff=4):
@@ -86,19 +48,9 @@ def process_folder_balanced(protein_path, ndims=16, cutoff=4):
     y = np.concatenate([y[pos_values], y[neg_downsampled]])
     # next we permute subset
     ids = np.random.permutation(y.shape[0])
-    #coords = coords[ids] 
-    #y = y[ids]
     for index in ids:
-        #print(coords[i])
         (i, j, k) = coords[index]
         yield features[i: i+ndims, j: j+ndims, k: k+ndims, :], y[index]
-
-    #for features, center in get_all_windows_data(features, centers, ndims=ndims):
-    #    #print(center)
-    #    positive_condition = euclidean(center, binding_site_center) < cutoff
-    #    yield features, positive_condition
-    #print(np.mean(total_y), np.sum(total_y), total_y.shape)
-    #for features, positive in process_folder(protein_path, ndims, cutoff)
 
     
 if __name__ == "__main__":

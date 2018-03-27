@@ -1,6 +1,12 @@
+from time import sleep
 from htmd.ui import *
 from htmd.molecule.voxeldescriptors import getVoxelDescriptors
 from scipy.spatial.distance import euclidean
+import pandas as pd
+from multiprocessing import Pool
+import numpy as np
+import os, math
+from tqdm import trange
 
 
 def get_windows_data(data, ndims=(16, 16, 16)):
@@ -21,12 +27,21 @@ def get_windows_data(data, ndims=(16, 16, 16)):
 def process_folder_balanced(protein_path, ndims=16, cutoff=4):
     """we return subset with positive and neg values, balanced by downsampling
     """
+    info_file_path = os.path.join(protein_path, "info.txt")
+    for x in ["site.mol2", "protein.mol2"]:
+        if not os.path.exists(os.path.join(protein_path, x)):
+            return
     #total_features = []
     binding_site = Molecule(os.path.join(protein_path, "site.mol2")) 
     binding_site_center = np.mean(binding_site.get('coords'), axis=0)
     #print(binding_site_center)
     protein_molecule = Molecule(os.path.join(protein_path, "protein.mol2"))
-    features, centers, N = getVoxelDescriptors(protein_molecule, buffer=8)
+    try:
+        features, centers, N = getVoxelDescriptors(protein_molecule, buffer=8)
+    except:
+        with open(info_file_path, 'w')as f:
+            f.write("error")
+        return
     if np.any(N < ndims):
         print("protein is smaller, skip")
         return
@@ -43,6 +58,9 @@ def process_folder_balanced(protein_path, ndims=16, cutoff=4):
     y = np.asarray(y)
     pos_values = np.where(y)[0]
     neg_values = np.where(y==0)[0]
+    with open(info_file_path, 'w') as f:
+        f.write("%s;%s;%s"% (len(y), len(pos_values), len(neg_values)))
+        
     neg_downsampled = np.random.choice(neg_values, pos_values.shape[0])
     coords = np.concatenate([coords[pos_values], coords[neg_downsampled]])
     y = np.concatenate([y[pos_values], y[neg_downsampled]])
@@ -52,17 +70,30 @@ def process_folder_balanced(protein_path, ndims=16, cutoff=4):
         (i, j, k) = coords[index]
         yield features[i: i+ndims, j: j+ndims, k: k+ndims, :], y[index]
 
+
+def process_protein_data(protein_path, recompute=False):
+    ndims=16
+    csv_filename = os.path.join(protein_path, "features.csv")
+    if not recompute and os.path.exists(csv_filename):
+        sleep(1)
+        return
+    data = pd.DataFrame(columns=["y"] + list(range(0, ndims*ndims*ndims*8)))
+    for i, (features, y) in enumerate(process_folder_balanced(protein_path, ndims=ndims, cutoff=4)):
+        data.loc[i, "y"] = y
+        data.loc[i, 1:] = features.reshape(-1)
+    data.to_csv(csv_filename, sep=";", index=False, header=False)
+   
     
 if __name__ == "__main__":
     scPDBdir = "scPDB" # suppose that all data are located at this folder
-    ## full usage example:
-    # for protein_folder_name in os.listdir(scPDBdir):
-    #    protein_folder_path = os.path.join(scPDBdir, protein_folder_name)
-    #    for features, y in process_folder(protein_folder_path, cutoff=4):
-    #        print("do something") # here we have a list of preprocessed features of size (16, 16, 16, 8) and y labels
-    #
-    # for features, y in process_folder("scPDB/4f9g_1", cutoff=4):
-    #    print(y) # or iterate over all
-    for features, y in process_folder_balanced("scPDB/4f9g_1", cutoff=4):
-        print(features.shape, y) # or do something
-    pass
+    filenames = list(map(lambda x: os.path.join(scPDBdir, x), os.listdir(scPDBdir)))
+    total_processes = 20
+    L = range(total_processes)
+
+    def pool_processor(n):
+        size = math.ceil(len(filenames)/total_processes)
+        for index in trange(min(size, len(filenames)-n*size), position=n):
+            process_protein_data(filenames[n*size + index])
+ 
+    with Pool(len(L)) as pool:
+        pool.map(pool_processor, L)

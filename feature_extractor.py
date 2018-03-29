@@ -18,9 +18,9 @@ def get_windows_data(data, ndims=(16, 16, 16)):
         nx = ny = nz = ndims
     (maxx, maxy, maxz) = data.shape[:3]
     # the following might be ineffective, but simple
-    for i in range(maxx - nx):
-        for j in range(maxy - ny):
-            for k in range(maxz - nz):
+    for i in range(0, maxx - nx, 4):
+        for j in range(0, maxy - ny, 4):
+            for k in range(0, maxz - nz, 4):
                 yield i, j, k, data[i:i+nx, j:j+ny, k:k+nz, :]
 
         
@@ -75,7 +75,6 @@ def process_protein_data(protein_path, recompute=False):
     ndims=16
     csv_filename = os.path.join(protein_path, "features.csv")
     if not recompute and os.path.exists(csv_filename):
-        sleep(1)
         return
     data = pd.DataFrame(columns=["y"] + list(range(0, ndims*ndims*ndims*8)))
     for i, (features, y) in enumerate(process_folder_balanced(protein_path, ndims=ndims, cutoff=4)):
@@ -86,14 +85,19 @@ def process_protein_data(protein_path, recompute=False):
     
 if __name__ == "__main__":
     scPDBdir = "scPDB" # suppose that all data are located at this folder
-    filenames = list(map(lambda x: os.path.join(scPDBdir, x), os.listdir(scPDBdir)))
-    total_processes = 20
+    filenames = []
+    with open("selected_subset.txt") as f:
+        for line in f:
+            filenames.append(os.path.join(scPDBdir, line.strip()))
+    #filenames = list(map(lambda x: os.path.join(scPDBdir, x), os.listdir(scPDBdir)))
+    #filenames = filenames[:]
+    total_processes = 10
     L = range(total_processes)
 
     def pool_processor(n):
         size = math.ceil(len(filenames)/total_processes)
-        for index in trange(min(size, len(filenames)-n*size), position=n):
-            process_protein_data(filenames[n*size + index])
+        for index in trange(min(size, len(filenames)-(n-1)*size), position=n):
+            process_protein_data(filenames[(n-1)*size + index])
  
     with Pool(len(L)) as pool:
         pool.map(pool_processor, L)

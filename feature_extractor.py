@@ -7,7 +7,7 @@ from multiprocessing import Pool
 import numpy as np
 import os, math
 from tqdm import trange
-
+import h5py
 
 def get_windows_data(data, ndims=(16, 16, 16)):
     """helper iterator method: gets data, slices it to windows defined by ndims, returns its coordinates 
@@ -73,18 +73,27 @@ def process_folder_balanced(protein_path, ndims=16, cutoff=4):
 
 def process_protein_data(protein_path, recompute=False):
     ndims=16
-    csv_filename = os.path.join(protein_path, "features.csv")
-    if not recompute and os.path.exists(csv_filename):
+    #csv_filename = os.path.join(protein_path, "features.csv")
+    #if not recompute and os.path.exists(csv_filename):
+    #    return
+    #data = pd.DataFrame(columns=["y"] + list(range(0, ndims*ndims*ndims*8)))
+    #for i, (features, y) in enumerate(process_folder_balanced(protein_path, ndims=ndims, cutoff=4)):
+    #    data.loc[i, "y"] = y
+    #    data.loc[i, 1:] = features.reshape(-1)
+    #data.to_csv(csv_filename, sep=";", index=False, header=False)
+    hdf5_filename = os.path.join(protein_path, "features.hdf5")
+    if not recompute and os.path.exists(hdf5_filename):
         return
-    data = pd.DataFrame(columns=["y"] + list(range(0, ndims*ndims*ndims*8)))
-    for i, (features, y) in enumerate(process_folder_balanced(protein_path, ndims=ndims, cutoff=4)):
-        data.loc[i, "y"] = y
-        data.loc[i, 1:] = features.reshape(-1)
-    data.to_csv(csv_filename, sep=";", index=False, header=False)
+    with h5py.File(hdf5_filename, 'w') as f:
+        for i, (features, y) in enumerate(process_folder_balanced(protein_path, ndims=ndims, cutoff=4)):
+            #y, features
+            label = "positive" if y else "negative"
+            f.create_dataset("%s_features_%s" % (label, i), data=features, compression="gzip")
+
    
     
 if __name__ == "__main__":
-    scPDBdir = "scPDB" # suppose that all data are located at this folder
+    scPDBdir = "/home/malygina/data/scPDB" # suppose that all data are located at this folder
     filenames = []
     with open("selected_subset.txt") as f:
         for line in f:

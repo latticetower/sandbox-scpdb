@@ -42,7 +42,7 @@ def get_substructure_df(mol2_lines):
     column_types = (int, str, int, str, int, str, str)
 
     import pandas as pd
-    df = pd.DataFrame([lst.split()[:len(column_names)] for lst in lst1],
+    df = pd.DataFrame([lst.split()[:len(column_names)] for lst in lst1 if lst.strip() != ''],
                               columns=column_names)
     for i in range(df.shape[1]):
         df[column_names[i]] = df[column_names[i]].astype(column_types[i])
